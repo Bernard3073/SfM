@@ -4,8 +4,12 @@ import cv2
 import matplotlib.pyplot as plt
 from utils import *
 from GetInliersRANSAC import *
-import EssentialMatrixFromFundamentalMatrix
-import ExtractCameraPose
+from EssentialMatrixFromFundamentalMatrix import *
+from ExtractCameraPose import *
+from LinearTriangulation import *
+from DisambiguateCameraPose import *
+from NonlinearTriangulation import *
+
 
 # camera intrinsic matrix
 K = np.array([[568.996140852, 0, 643.21055941],
@@ -79,7 +83,7 @@ def main():
     new_feature_idx = np.zeros_like(feature_idx)
     all_F_mat = np.empty(shape=(num_imgs, num_imgs), dtype=object)
 
-    imgs = readImageSet(data_path, num_imgs)
+    # imgs = readImageSet(data_path, num_imgs)
 
     for i in range(num_imgs-1):
         for j in range(i+1, num_imgs):
@@ -94,6 +98,30 @@ def main():
                 all_F_mat[i, j] = F_mat_best
                 feature_idx[new_idx, i] = 1
                 feature_idx[new_idx, j] = 1
+    # take the first two images
+    F_mat_12 = all_F_mat[0, 1]
+    E_mat_12 = EssentialMatrixFromFundamentalMatrix(F_mat_12, K)
+    # four camera pose configurations
+    R_set, C_set = ExtractCameraPose(E_mat_12)
+    idx = np.where(feature_idx[:, 0] & feature_idx[:, 1])
+    pts_1 = np.hstack((feature_x[idx, 0].T, feature_y[idx, 0].T))
+    pts_2 = np.hstack((feature_x[idx, 1].T, feature_y[idx, 1].T))
+
+    R1 = np.identity(3)
+    C1 = np.zeros((3, 1))
+    X_set = []
+    for i in range(len(C_set)):
+        X = LinearTriangulation(K, R1, C1, R_set[i], C_set[i], pts_1, pts_2)
+        X = X / X[:, 3].reshape((-1, 1))
+        X_set.append(X)
+    # the correct camera pose and its 3D triangulated points
+    R_new, C_new, X_new = DisambiguateCameraPose(R_set, C_set, X_set)
+    X_new = X_new / X_new[:, 3].reshape((-1, 1))
+    X_new_opt = NonlinearTriangulation(K, R1, C1, R_new, C_new, X_new, pts_1, pts_2)
+    X_new_opt = X_new_opt/X_new_opt[:, 3].reshape((-1, 1))
+    print("X_new: ", X_new)
+    print("X_new_opt: ", X_new_opt)
+
 
 if __name__ == '__main__':
     main()
