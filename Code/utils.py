@@ -1,4 +1,3 @@
-import cv2
 import numpy as np
 
 def extract_feature(data_path, num_imgs):
@@ -45,3 +44,9 @@ def extract_feature(data_path, num_imgs):
             feature_idx.append(idx_row)
 
     return np.array(feature_idx).reshape(-1, num_imgs) ,np.array(feature_x).reshape(-1, num_imgs), np.array(feature_y).reshape(-1, num_imgs)
+
+def ProjectionMatrix(R,C,K):
+    C = np.reshape(C, (3, 1))        
+    I = np.identity(3)
+    P = np.dot(K, np.dot(R, np.hstack((I, -C))))
+    return P

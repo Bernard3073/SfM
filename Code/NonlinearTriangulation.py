@@ -1,11 +1,6 @@
 import numpy as np
 import scipy.optimize as opt
-
-def ProjectionMatrix(R,C,K):
-    C = np.reshape(C, (3, 1))        
-    I = np.identity(3)
-    P = np.dot(K, np.dot(R, np.hstack((I, -C))))
-    return P
+from utils import *
 
 def ReprojectionLoss(X, pts1, pts2, P1, P2):
     

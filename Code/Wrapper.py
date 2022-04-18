@@ -9,7 +9,10 @@ from ExtractCameraPose import *
 from LinearTriangulation import *
 from DisambiguateCameraPose import *
 from NonlinearTriangulation import *
-
+from PnPRANSAC import *
+from NonlinearPnP import *
+from BundleAdjustment import *
+from BuildVisibilityMatrix import *
 
 # camera intrinsic matrix
 K = np.array([[568.996140852, 0, 643.21055941],
@@ -96,14 +99,14 @@ def main():
                 F_mat_best, new_idx = GetInliersRANSAC(pts_1, pts_2, idx)
                 print('At image : ',  i,j, '|| Number of inliers: ', len(new_idx), '/', len(idx) )  
                 all_F_mat[i, j] = F_mat_best
-                feature_idx[new_idx, i] = 1
-                feature_idx[new_idx, j] = 1
+                new_feature_idx[new_idx, i] = 1
+                new_feature_idx[new_idx, j] = 1
     # take the first two images
     F_mat_12 = all_F_mat[0, 1]
     E_mat_12 = EssentialMatrixFromFundamentalMatrix(F_mat_12, K)
     # four camera pose configurations
     R_set, C_set = ExtractCameraPose(E_mat_12)
-    idx = np.where(feature_idx[:, 0] & feature_idx[:, 1])
+    idx = np.where(new_feature_idx[:, 0] & new_feature_idx[:, 1])
     pts_1 = np.hstack((feature_x[idx, 0].T, feature_y[idx, 0].T))
     pts_2 = np.hstack((feature_x[idx, 1].T, feature_y[idx, 1].T))
 
@@ -119,8 +122,44 @@ def main():
     X_new = X_new / X_new[:, 3].reshape((-1, 1))
     X_new_opt = NonlinearTriangulation(K, R1, C1, R_new, C_new, X_new, pts_1, pts_2)
     X_new_opt = X_new_opt/X_new_opt[:, 3].reshape((-1, 1))
-    print("X_new: ", X_new)
-    print("X_new_opt: ", X_new_opt)
+    # print("X_new: ", X_new)
+    # print("X_new_opt: ", X_new_opt)
+    X_all = np.zeros((feature_x.shape[0], 3))
+    camera_indices = np.zeros((feature_x.shape[0], 1), dtype = int) 
+    X_found = np.zeros((feature_x.shape[0], 1), dtype = int)
+
+    X_all[idx] = X[:, :3]
+    X_found[idx] = 1
+    camera_indices[idx] = 1
+
+    # print(np.nonzero(X_found[idx])[0].shape)
+    X_found[np.where(X_all[:,2] < 0)] = 0
+    # print(len(idx[0]), '--' ,np.nonzero(X_found[idx])[0].shape)
+
+    C_set_new = []
+    R_set_new = []
+
+    C0 = np.zeros(3)
+    R0 = np.identity(3)
+    C_set_new.append(C0)
+    C_set_new.append(C_new)
+    R_set_new.append(R0)
+    R_set_new.append(R_new)
+    # Register camera and add 3D points for the rest of the images
+    for i in range(2, num_imgs):
+        feature_idx_i = np.where(X_found[:, 0] & new_feature_idx[:, i])
+        if len(feature_idx_i[0]) < 8:
+            print("Found ", len(feature_idx_i), "common points between X and ", i, " image")
+            continue
+
+        x_i = np.hstack((feature_x[feature_idx_i, i].reshape(-1,1), feature_y[feature_idx_i, i].reshape(-1,1)))
+        X = X_all[feature_idx_i, :].reshape(-1,3)
+        R_i, C_i = PnPRANSAC(X, x_i, K)
+        R_new, C_new = NonlinearPnP(X, x_i, K, R_i, C_i)
+        print("R_i: ", R_i)
+        print("C_i: ", C_i)
+        print("R_new: ", R_new)
+        print("C_new: ", C_new)
 
 
 if __name__ == '__main__':
