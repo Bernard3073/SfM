@@ -156,11 +156,61 @@ def main():
         X = X_all[feature_idx_i, :].reshape(-1,3)
         R_i, C_i = PnPRANSAC(X, x_i, K)
         R_new, C_new = NonlinearPnP(X, x_i, K, R_i, C_i)
-        print("R_i: ", R_i)
-        print("C_i: ", C_i)
-        print("R_new: ", R_new)
-        print("C_new: ", C_new)
+        # print("R_i: ", R_i)
+        # print("C_i: ", C_i)
+        # print("R_new: ", R_new)
+        # print("C_new: ", C_new)
+        R_set_new.append(R_new)
+        C_set_new.append(C_new)
+        # triangulate the 3D points
+        for j in range(i):
+            idx_X_j = np.where(new_feature_idx[:, i] & new_feature_idx[:, j])
+            if len(idx_X_j[0]) < 8:
+                continue
+            x1 = np.hstack((feature_x[idx_X_j, j].reshape(-1,1), feature_y[idx_X_j, j].reshape(-1,1)))
+            x2 = np.hstack((feature_x[idx_X_j, i].reshape(-1,1), feature_y[idx_X_j, i].reshape(-1,1)))
+            
+            X_new = LinearTriangulation(K, R_set_new[j], C_set_new[j], R_new, C_new,  x1, x2)
+            X_new = X_new / X_new[:, 3].reshape((-1, 1))
+            X_new = NonlinearTriangulation(K, R_set_new[j], C_set_new[j], R_new, C_new, X_new, x1, x2)
+            X_new = X_new / X_new[:, 3].reshape((-1, 1))
 
+            X_all[idx_X_j] = X_new[:, :3]
+            X_found[idx_X_j] = 1
+            print("appended ", len(idx_X_j[0]), " points between ", j ," and ", i)
+            # R_set_new, C_set_new, X_all = BundleAdjustment(X_all, X_found, K, R_set_new, C_set_new, feature_x, feature_y, new_feature_idx, i)
+            
+            X_all, R_set_new, C_set_new = BundleAdjustment(X_all, X_found, K, R_set_new, C_set_new, feature_x, feature_y, new_feature_idx, i)
+
+            for k in range(i+1):
+                X_pts_idx = np.where(X_found[:, 0] & new_feature_idx[:, k])
+                x = np.hstack((feature_x[X_pts_idx, k].reshape(-1,1), feature_y[X_pts_idx, k].reshape(-1,1)))
+                X = X_all[X_pts_idx]
+                BundleAdjustment_error = reprojectionErrorPnP(X, x, K, R_set_new[k], C_set_new[k])
+                print("BundleAdjustment_error: ", BundleAdjustment_error)
+    
+    X_found[X_all[:,2] < 0] = 0
+    feature_idx = np.where(X_found[:, 0])
+    X = X_all[feature_idx]
+    x = X[:,0]
+    y = X[:,1]
+    z = X[:,2]
+    
+    # 2D plotting
+    fig = plt.figure(figsize = (10, 10))
+    plt.xlim(-250,  250)
+    plt.ylim(-100,  500)
+    plt.scatter(x, z, marker='.',linewidths=0.5, color = 'blue')
+    for i in range(0, len(C_set_new)):
+        R1 = Rotation.from_matrix(R_set_new[i]).as_rotvec()
+        R1 = np.rad2deg(R1)
+        plt.plot(C_set_new[i][0],C_set_new[i][2], marker=(3, 0, int(R1[1])), markersize=15, linestyle='None')
+    plt.show()
+    # 3D plotting
+    ax = plt.axes(projection ="3d")
+    # Creating plot
+    ax.scatter3D(x, y, z, color = "green")
+    plt.show()
 
 if __name__ == '__main__':
     main()
