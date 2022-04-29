@@ -29,8 +29,8 @@ def LinearPnP(X_set, x_set, K):
     P = Vt[-1].reshape((3, 4))
     R = P[:, :3]
     # Enforce Orthonormality
-    U_r, _, V_rT = np.linalg.svd(R) 
-    R = U_r.dot(V_rT)
+    U, _, Vt = np.linalg.svd(R) 
+    R = U @ Vt
     
     C = P[:, 3]
     C = - np.linalg.inv(R).dot(C)

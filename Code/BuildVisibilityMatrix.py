@@ -8,7 +8,7 @@ def BuildVisibilityMatrix(X, feature_idx, num_camera):
     for n in range(num_camera+1):
         zeros = zeros | feature_idx[:, n]
 
-    X_idx = np.where((X.reshape(-1)) & (zeros))
+    X_idx = np.where(X.reshape(-1) & zeros)
     v_mat = X[X_idx].reshape(-1, 1)
 
     for n in range(num_camera+1):

@@ -28,7 +28,7 @@ def PnPRANSAC(X, x, K):
         X_sample = X[idx, :]
         x_sample = x[idx, :]
         R_i, C_i = LinearPnP(X_sample, x_sample, K)
-        # compute the reprojection error
+        # compute the reproject error
         inliers = 0
         if R_i is not None:
             for j in range(x.shape[0]):

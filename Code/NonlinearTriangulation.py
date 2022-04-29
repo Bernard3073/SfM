@@ -2,9 +2,7 @@ import numpy as np
 import scipy.optimize as opt
 from utils import *
 
-def ReprojectionLoss(X, pts1, pts2, P1, P2):
-    
-    # X = homo(X.reshape(1,-1)).reshape(-1,1) # make X a column of homogenous vector
+def func(X, pts1, pts2, P1, P2):
     
     p1_1T, p1_2T, p1_3T = P1 # rows of P1
     p1_1T, p1_2T, p1_3T = p1_1T.reshape(1,-1), p1_2T.reshape(1,-1),p1_3T.reshape(1,-1)
@@ -33,7 +31,7 @@ def NonlinearTriangulation(K, R1, C1, R2, C2, X_new, pts_1, pts_2):
     P2 = ProjectionMatrix(R2,C2,K)
     X = []
     for i in range(len(X_new)):
-        optimize_params = opt.least_squares(ReprojectionLoss, X_new[i], args=(pts_1[i], pts_2[i], P1, P2))
+        optimize_params = opt.least_squares(func, X_new[i], args=(pts_1[i], pts_2[i], P1, P2))
         x = optimize_params.x
         X.append(x)
 

@@ -53,9 +53,6 @@ def makeImageSizeSame(imgs):
     return images_resized
 
 def showMatches(image_1, image_2, pts1, pts2, color, file_name):
-#     file_name =  None
-    # image_1 = img_1
-    # image_2 = img_2
 
     image_1, image_2 = makeImageSizeSame([image_1, image_2])
     concat = np.concatenate((image_1, image_2), axis = 1)
@@ -75,19 +72,9 @@ def showMatches(image_1, image_2, pts1, pts2, color, file_name):
     #     cv2.imwrite(file_name, concat)
     cv2.destroyAllWindows()
     return concat
-
-def main():
-    Parser = argparse.ArgumentParser()
-    Parser.add_argument('--data_path', default="./Data/", help='directory to the image data')
-    Args = Parser.parse_args()
-    data_path = Args.data_path
-    feature_idx, feature_x, feature_y = extract_feature(data_path, num_imgs)
-    
+def get_inliers(feature_idx, feature_x, feature_y):
     new_feature_idx = np.zeros_like(feature_idx)
     all_F_mat = np.empty(shape=(num_imgs, num_imgs), dtype=object)
-
-    # imgs = readImageSet(data_path, num_imgs)
-
     for i in range(num_imgs-1):
         for j in range(i+1, num_imgs):
             idx = np.where(feature_idx[:, i] & feature_idx[:, j])
@@ -97,16 +84,29 @@ def main():
             idx = np.array(idx).T
             if len(idx) > 8:
                 F_mat_best, new_idx = GetInliersRANSAC(pts_1, pts_2, idx)
-                print('At image : ',  i,j, '|| Number of inliers: ', len(new_idx), '/', len(idx) )  
+                print('number of inliers: ', len(new_idx), '/', len(idx), 'between images:', i,j)  
                 all_F_mat[i, j] = F_mat_best
                 new_feature_idx[new_idx, i] = 1
                 new_feature_idx[new_idx, j] = 1
-    # take the first two images
+
+    return new_feature_idx, all_F_mat
+
+def main():
+    Parser = argparse.ArgumentParser()
+    Parser.add_argument('--data_path', default="./Data/", help='directory to the image data')
+    Args = Parser.parse_args()
+    data_path = Args.data_path
+    feature_idx, feature_x, feature_y = extract_feature(data_path, num_imgs)
+
+    # imgs = readImageSet(data_path, num_imgs)
+    feature_idx, all_F_mat = get_inliers(feature_idx, feature_x, feature_y)
+    
+    # select the first two images for the initial pair reconstruction
     F_mat_12 = all_F_mat[0, 1]
     E_mat_12 = EssentialMatrixFromFundamentalMatrix(F_mat_12, K)
     # four camera pose configurations
     R_set, C_set = ExtractCameraPose(E_mat_12)
-    idx = np.where(new_feature_idx[:, 0] & new_feature_idx[:, 1])
+    idx = np.where(feature_idx[:, 0] & feature_idx[:, 1])
     pts_1 = np.hstack((feature_x[idx, 0].T, feature_y[idx, 0].T))
     pts_2 = np.hstack((feature_x[idx, 1].T, feature_y[idx, 1].T))
 
@@ -124,18 +124,17 @@ def main():
     X_new_opt = X_new_opt/X_new_opt[:, 3].reshape((-1, 1))
     # print("X_new: ", X_new)
     # print("X_new_opt: ", X_new_opt)
-    X_all = np.zeros((feature_x.shape[0], 3))
-    camera_indices = np.zeros((feature_x.shape[0], 1), dtype = int) 
-    X_found = np.zeros((feature_x.shape[0], 1), dtype = int)
 
-    X_all[idx] = X[:, :3]
-    X_found[idx] = 1
+    X_3d = np.zeros((feature_x.shape[0], 3)) # shape: N x 3
+    camera_indices = np.zeros((feature_x.shape[0], 1), dtype = int) 
+    # binary array for checking the feature points
+    X_binary = np.zeros((feature_x.shape[0], 1), dtype = int) # shape: N x 1
+
+    X_3d[idx] = X_new[:, :3]
+    X_binary[idx] = 1
     camera_indices[idx] = 1
 
-    # print(np.nonzero(X_found[idx])[0].shape)
-    X_found[np.where(X_all[:,2] < 0)] = 0
-    # print(len(idx[0]), '--' ,np.nonzero(X_found[idx])[0].shape)
-
+    X_binary[np.where(X_3d[:, 2] <0) ] = 0
     C_set_new = []
     R_set_new = []
 
@@ -147,69 +146,67 @@ def main():
     R_set_new.append(R_new)
     # Register camera and add 3D points for the rest of the images
     for i in range(2, num_imgs):
-        feature_idx_i = np.where(X_found[:, 0] & new_feature_idx[:, i])
+        feature_idx_i = np.where(X_binary[:, 0] & feature_idx[:, i])
         if len(feature_idx_i[0]) < 8:
-            print("Found ", len(feature_idx_i), "common points between X and ", i, " image")
             continue
 
-        x_i = np.hstack((feature_x[feature_idx_i, i].reshape(-1,1), feature_y[feature_idx_i, i].reshape(-1,1)))
-        X = X_all[feature_idx_i, :].reshape(-1,3)
+        x_i = np.hstack((feature_x[feature_idx_i, i].reshape(-1,1), 
+                            feature_y[feature_idx_i, i].reshape(-1,1)))
+        X = X_3d[feature_idx_i, :].reshape(-1,3)
         R_i, C_i = PnPRANSAC(X, x_i, K)
         R_new, C_new = NonlinearPnP(X, x_i, K, R_i, C_i)
-        # print("R_i: ", R_i)
-        # print("C_i: ", C_i)
-        # print("R_new: ", R_new)
-        # print("C_new: ", C_new)
+
         R_set_new.append(R_new)
         C_set_new.append(C_new)
+
         # triangulate the 3D points
         for j in range(i):
-            idx_X_j = np.where(new_feature_idx[:, i] & new_feature_idx[:, j])
-            if len(idx_X_j[0]) < 8:
+            X_j_idx = np.where(feature_idx[:, i] & feature_idx[:, j])
+            if len(X_j_idx[0]) < 8:
                 continue
-            x1 = np.hstack((feature_x[idx_X_j, j].reshape(-1,1), feature_y[idx_X_j, j].reshape(-1,1)))
-            x2 = np.hstack((feature_x[idx_X_j, i].reshape(-1,1), feature_y[idx_X_j, i].reshape(-1,1)))
+            x1 = np.hstack((feature_x[X_j_idx, j].reshape(-1,1), feature_y[X_j_idx, j].reshape(-1,1)))
+            x2 = np.hstack((feature_x[X_j_idx, i].reshape(-1,1), feature_y[X_j_idx, i].reshape(-1,1)))
             
             X_new = LinearTriangulation(K, R_set_new[j], C_set_new[j], R_new, C_new,  x1, x2)
             X_new = X_new / X_new[:, 3].reshape((-1, 1))
             X_new = NonlinearTriangulation(K, R_set_new[j], C_set_new[j], R_new, C_new, X_new, x1, x2)
             X_new = X_new / X_new[:, 3].reshape((-1, 1))
 
-            X_all[idx_X_j] = X_new[:, :3]
-            X_found[idx_X_j] = 1
-            print("appended ", len(idx_X_j[0]), " points between ", j ," and ", i)
-            # R_set_new, C_set_new, X_all = BundleAdjustment(X_all, X_found, K, R_set_new, C_set_new, feature_x, feature_y, new_feature_idx, i)
-            
-            X_all, R_set_new, C_set_new = BundleAdjustment(X_all, X_found, K, R_set_new, C_set_new, feature_x, feature_y, new_feature_idx, i)
+            X_3d[X_j_idx] = X_new[:, :3]
+            X_binary[X_j_idx] = 1
+            print("appended ", len(X_j_idx[0]), " points between ", j ," and ", i)
+            X_idx, V_mat = BuildVisibilityMatrix(X_binary, feature_idx, i)
+
+            X_3d, R_set_new, C_set_new = BundleAdjustment(X_3d, X_idx, V_mat, K, R_set_new, C_set_new, feature_x, feature_y, i)
 
             for k in range(i+1):
-                X_pts_idx = np.where(X_found[:, 0] & new_feature_idx[:, k])
+                X_pts_idx = np.where(X_binary[:, 0] & feature_idx[:, k])
                 x = np.hstack((feature_x[X_pts_idx, k].reshape(-1,1), feature_y[X_pts_idx, k].reshape(-1,1)))
-                X = X_all[X_pts_idx]
+                X = X_3d[X_pts_idx]
                 BundleAdjustment_error = reprojectionErrorPnP(X, x, K, R_set_new[k], C_set_new[k])
                 print("BundleAdjustment_error: ", BundleAdjustment_error)
-    
-    X_found[X_all[:,2] < 0] = 0
-    feature_idx = np.where(X_found[:, 0])
-    X = X_all[feature_idx]
+
+    X_binary[X_3d[:,2] < 0] = 0
+    feature_idx = np.where(X_binary[:, 0])
+    X = X_3d[feature_idx]
     x = X[:,0]
     y = X[:,1]
     z = X[:,2]
     
     # 2D plotting
-    fig = plt.figure(figsize = (10, 10))
-    plt.xlim(-250,  250)
-    plt.ylim(-100,  500)
     plt.scatter(x, z, marker='.',linewidths=0.5, color = 'blue')
     for i in range(0, len(C_set_new)):
         R1 = Rotation.from_matrix(R_set_new[i]).as_rotvec()
         R1 = np.rad2deg(R1)
         plt.plot(C_set_new[i][0],C_set_new[i][2], marker=(3, 0, int(R1[1])), markersize=15, linestyle='None')
+    
+    plt.savefig('2D_plot.png')
     plt.show()
     # 3D plotting
     ax = plt.axes(projection ="3d")
     # Creating plot
-    ax.scatter3D(x, y, z, color = "green")
+    ax.scatter3D(x, y, z, color = "blue")
+    plt.savefig('3D_plot.png')
     plt.show()
 
 if __name__ == '__main__':

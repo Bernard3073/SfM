@@ -1,6 +1,10 @@
 import numpy as np
 
 def DisambiguateCameraPose(R_set, C_set, X_set):
+    '''
+    Given four camera pose configuration and their triangulated points, find the unique camera
+    pose by checking the cheirality condition—the reconstructed points must be in front of the cameras
+    '''
     best_i = 0
     max_positive_depth_cnt = 0
     for i in range(len(R_set)):

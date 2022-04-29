@@ -6,7 +6,7 @@ def error_func(pts_1, pts_2, F):
     return error
 
 def GetInliersRANSAC(pts_1, pts_2, idx):
-    num_iteration = 2000
+    num_iteration = 500
     error_threshold = 0.005
     inliers_threshold = 0
     new_idx = []
@@ -19,7 +19,6 @@ def GetInliersRANSAC(pts_1, pts_2, idx):
         idx_rand = np.random.choice(idx.shape[0], 8, replace=False)
         pts_1_rand = pts_1[idx_rand, :]
         pts_2_rand = pts_2[idx_rand, :]
-        # F_mat_rand = cv2.findFundamentalMat(pts_1_rand, pts_2_rand, cv2.FM_RANSAC)
         F_mat_rand = EstimateFundamentalMatrix(pts_1_rand, pts_2_rand)
         indices = []
         if F_mat_rand is not None:
@@ -27,11 +26,7 @@ def GetInliersRANSAC(pts_1, pts_2, idx):
                 error = error_func(pts_1_norm[j, :], pts_2_norm[j, :], F_mat_rand)
                 if error < error_threshold:
                     indices.append(idx[j])
-        # e1 = pts_1_norm @ F_mat_rand.T
-        # e2 = pts_2_norm @ F_mat_rand
-        # error = np.abs(np.dot(e2, e1))
-        # if F_mat_rand is not None and error < error_threshold:
-        #     indices.append(idx[j])
+                    
         if len(indices) > inliers_threshold:
             inliers_threshold = len(new_idx)
             new_idx = indices
